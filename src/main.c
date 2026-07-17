@@ -36,10 +36,14 @@ int main(int argc, char** argv) {
 
   Parser p;
   read_conf(&p, confpath, arena);
-  Codegen c;
-  generate_code(&c, &p);
+  if (p.err == PE_OK) {
+    Codegen c;
+    generate_code(&c, &p);
+    codegen_destroy(&c);
+  } else {
+    printf("Parsing failed, exiting\n");
+  }
   parser_destroy(&p);
-  codegen_destroy(&c);
 
 end:
   vmarena_free(arena);

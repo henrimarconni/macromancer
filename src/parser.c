@@ -5,27 +5,15 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <sys/types.h>
 
 /*
  This file "Reads" the code from animals.mm file
 */
 
 #define MAX_ID_LEN 128
-
-#define validate_eof(p, ch)                                                                        \
-  if (ch == EOF) {                                                                                 \
-    p->err = PE_ERR;                                                                               \
-    fprintf(stderr, "Unexpected EOF\n");                                                           \
-  }
-
-#define validate(p)                                                                                \
-  if ((p)->err == PE_ERR)                                                                          \
-    return;
-
-#define validate_int(p)                                                                            \
-  if ((p)->err == PE_ERR)                                                                          \
-    return -1;
 
 #define DISPATCH_TABLE(X)                                                                          \
   X("impl", parse_impl)                                                                            \
@@ -39,7 +27,7 @@ ostr dup(Parser* p, bstr str) {
   return dup;
 }
 
-void get_tok(Parser* p, bstr buf, int start_ch) {
+void fetch_tok(Parser* p, bstr buf, int start_ch) {
   int i = 0;
   int ch = start_ch;
   while (!isspace(ch)) {
@@ -52,14 +40,12 @@ void get_tok(Parser* p, bstr buf, int start_ch) {
   }
 
   buf[i++] = '\0';
-  // printf("get_tok: %s\n", buf);
   return;
 }
 
 int skip_comment(Parser* p, int ch) {
   if (ch == '#') {
     while (ch != '\n' && ch != EOF) {
-      // printf("skipping comment: %c\n", ch);
       ch = fgetc(p->file);
     }
   }
@@ -67,9 +53,7 @@ int skip_comment(Parser* p, int ch) {
 }
 
 int skip_space(Parser* p, int ch) {
-  // int ch = fgetc(p->file);
   while (isspace(ch) && ch != EOF) {
-    // printf("skipping space: %c\n", ch);
     ch = fgetc(p->file);
   }
   return ch;
@@ -88,31 +72,43 @@ int skip_unwanted(Parser* p) {
   return ch;
 }
 
-void parse_interface(Parser* p) {
-  int ch = skip_unwanted(p);
-  validate(p);
+ostr get_tok(Parser* p, char ch) {
+  char buf[MAX_ID_LEN];
+  fetch_tok(p, buf, ch);
+  return dup(p, buf);
+}
 
-  char name[MAX_ID_LEN];
-  get_tok(p, name, ch);
-  validate(p);
-
-  ch = skip_unwanted(p);
-  validate(p);
-
-  char as[MAX_ID_LEN];
-  get_tok(p, as, ch);
-  validate(p);
-  if (strncmp(as, "as", 2) != 0) {
+void expect(Parser* p, bstr str, char ch) {
+  char buf[MAX_ID_LEN];
+  fetch_tok(p, buf, ch);
+  if (strncmp(buf, str, 2) != 0) {
     p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `as` found %s\n", as);
+    fprintf(stderr, "Error: Expected `%s` found %s\n", str, buf);
     return;
   }
+}
+
+void print_interface(Interface* iface) {
+  printf("%s Interface %s: ", iface->is_dynamic ? "Dynamic" : "Static", iface->name);
+  for (size_t i = 0; i < iface->functions.n; i++) {
+    printf("%s", iface->functions.get[i]);
+    if (i == iface->functions.n - 1)
+      printf("\n");
+    else
+      printf(", ");
+  }
+}
+
+void parse_interface(Parser* p) {
+  int ch = skip_unwanted(p);
+  ostr name = get_tok(p, ch);
 
   ch = skip_unwanted(p);
-  validate(p);
+  expect(p, "as", ch);
+  ch = skip_unwanted(p);
 
   char type[MAX_ID_LEN];
-  get_tok(p, type, ch);
+  fetch_tok(p, type, ch);
 
   bool is_dynamic;
   if (strcmp(type, "Dynamic") == 0)
@@ -121,70 +117,38 @@ void parse_interface(Parser* p) {
     is_dynamic = false;
   else {
     p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `Dynamic` or `Static` found %s\n", as);
+    fprintf(stderr, "Error: Expected `Dynamic` or `Static` found %s\n", type);
     return;
   }
 
   ch = skip_unwanted(p);
-  if (ch != '{') {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected { found %c\n", ch);
-    return;
-  }
-
+  expect(p, "{", ch);
   ch = skip_unwanted(p);
-  validate(p);
 
   Interface iface = {};
   iface.is_dynamic = is_dynamic;
-  iface.name = dup(p, name);
+  iface.name = name;
 
-  char buf[MAX_ID_LEN];
   while (ch != '}') {
-    get_tok(p, buf, ch);
-    validate(p);
-
-    vec_push(iface.functions, dup(p, buf));
+    vec_push(iface.functions, get_tok(p, ch));
     ch = skip_unwanted(p);
-    validate(p);
   }
 
   vec_push(p->interfaces, iface);
-  // printf("%s Interface: %s with ", is_dynamic ? "Dynamic" : "Static", name);
-  // for (size_t i = 0; i < iface.functions.n; i++) {
-  //   printf("%s", iface.functions.get[i]);
-  //   if (i != iface.functions.n - 1)
-  //     printf(", ");
-  //   else
-  //     printf("\n");
-  // }
   return;
 }
 
-int parse_pair(Parser* p, ImplKVPair* pair, int* ch) {
-  char key[MAX_ID_LEN];
-  get_tok(p, key, *ch);
-
+void parse_pair(Parser* p, ImplKVPair* pair, int* ch) {
+  ostr key = get_tok(p, *ch);
   *ch = skip_unwanted(p);
-  validate_int(p);
 
-  if (*ch != '=') {
-    fprintf(stderr, "Error: expected = found %c\n", *ch);
-    p->err = PE_ERR;
-    return -1;
-  }
-
+  expect(p, "=", *ch);
   *ch = skip_unwanted(p);
-  validate_int(p);
 
-  char val[MAX_ID_LEN];
-  get_tok(p, val, *ch);
-  validate_int(p);
+  ostr val = get_tok(p, *ch);
 
-  pair->key = dup(p, key);
-  pair->val = dup(p, val);
-
-  return 0;
+  pair->key = key;
+  pair->val = val;
 }
 
 Impl* find_impl(Parser* p, Interface* iface, bstr name) {
@@ -214,32 +178,27 @@ int find_fn_id(Interface* iface, bstr name) {
   return -1;
 }
 
+void print_impl(Impl* impl) {
+  printf("Impl: %s with header %s and pairs: ", impl->name, impl->header);
+  for (size_t i = 0; i < impl->pairs.n; i++) {
+    printf("%s:%s", impl->pairs.get[i].key, impl->pairs.get[i].val);
+    if (i != impl->pairs.n - 1)
+      printf(", ");
+    else
+      printf("\n");
+  }
+}
+
 void parse_impl(Parser* p) {
   int ch = skip_unwanted(p);
-  validate(p);
-
-  char name[MAX_ID_LEN];
-  get_tok(p, name, ch);
-  validate(p);
+  ostr name = get_tok(p, ch);
 
   ch = skip_unwanted(p);
-  validate(p);
-
-  char as[MAX_ID_LEN];
-  get_tok(p, as, ch);
-  validate(p);
-  if (strncmp(as, "as", 2) != 0) {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `as` found %s\n", as);
-    return;
-  }
-
+  expect(p, "as", ch);
   ch = skip_unwanted(p);
-  validate(p);
 
   char iface_name[MAX_ID_LEN];
-  get_tok(p, iface_name, ch);
-  validate(p);
+  fetch_tok(p, iface_name, ch);
 
   Interface* iface = find_iface(p, iface_name);
   if (iface == NULL) {
@@ -249,20 +208,11 @@ void parse_impl(Parser* p) {
   }
 
   ch = skip_unwanted(p);
-  validate(p);
-
-  if (ch != '{') {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected { found %c\n", ch);
-    return;
-  }
-
+  expect(p, "{", ch);
   ch = skip_unwanted(p);
-  validate(p);
 
   ImplKVPair header_pair;
-  if (parse_pair(p, &header_pair, &ch) < 0)
-    return;
+  parse_pair(p, &header_pair, &ch);
 
   if (strcmp(header_pair.key, "$header") != 0) {
     fprintf(stderr, "Error: Expected `$header = none` or `$header = \"xxxx.h\", found %s\n`",
@@ -280,20 +230,17 @@ void parse_impl(Parser* p) {
 
   Impl impl = {};
   impl.header = header_pair.val;
-  impl.name = dup(p, name);
+  impl.name = name;
   vec_resize(impl.pairs, iface->functions.n);
 
-  char buf[MAX_ID_LEN];
   while (true) {
     ch = skip_unwanted(p);
-    validate(p);
-
     if (ch == '}')
       break;
 
     ImplKVPair pair;
-    if (parse_pair(p, &pair, &ch) < 0)
-      return;
+    parse_pair(p, &pair, &ch);
+
     int id = find_fn_id(iface, pair.key);
     if (id < 0) {
       fprintf(
@@ -308,23 +255,18 @@ void parse_impl(Parser* p) {
   }
 
   vec_push(iface->impls, impl);
-  // printf("Impl: %s with header %s and pairs: ", impl.name, impl.header);
-  // for (size_t i = 0; i < impl.pairs.n; i++) {
-  //   printf("%s:%s", impl.pairs.get[i].key, impl.pairs.get[i].val);
-  //   if (i != impl.pairs.n - 1)
-  //     printf(", ");
-  //   else
-  //     printf("\n");
-  // }
+}
+
+void print_export(ExportCmd* cmd) {
+  printf("Export: %s as %s by default\n", cmd->iface->name, cmd->impl->name);
 }
 
 void parse_export(Parser* p) {
   int ch = skip_unwanted(p);
-  validate(p);
 
   char iface_name[MAX_ID_LEN];
-  get_tok(p, iface_name, ch);
-  validate(p);
+  fetch_tok(p, iface_name, ch);
+
   Interface* iface = find_iface(p, iface_name);
   if (iface == NULL) {
     fprintf(stderr, "Error: Interface %s doesn't exist\n", iface_name);
@@ -333,23 +275,11 @@ void parse_export(Parser* p) {
   }
 
   ch = skip_unwanted(p);
-  validate(p);
-
-  char as[MAX_ID_LEN];
-  get_tok(p, as, ch);
-  validate(p);
-  if (strncmp(as, "as", 2) != 0) {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `as` found %s\n", as);
-    return;
-  }
-
+  expect(p, "as", ch);
   ch = skip_unwanted(p);
-  validate(p);
 
   char impl_name[MAX_ID_LEN];
-  get_tok(p, impl_name, ch);
-  validate(p);
+  fetch_tok(p, impl_name, ch);
   Impl* impl = find_impl(p, iface, impl_name);
   if (impl == NULL) {
     p->err = PE_ERR;
@@ -361,8 +291,6 @@ void parse_export(Parser* p) {
   export.iface = iface;
   export.impl = impl;
   vec_push(p->exports, export);
-
-  // printf("Export: %s as %s by default\n", iface->name, impl->name);
 }
 
 void parse_keyw(Parser* p, bstr keyw) {
@@ -388,8 +316,7 @@ void parse_conf(Parser* p) {
     }
 
     char buf[MAX_ID_LEN];
-    get_tok(p, buf, fgetc(p->file));
-    validate(p);
+    fetch_tok(p, buf, fgetc(p->file));
     parse_keyw(p, buf);
     ch = skip_unwanted(p);
   }
