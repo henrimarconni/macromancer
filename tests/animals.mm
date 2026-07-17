@@ -4,7 +4,7 @@ $interface Animal as Dynamic {
 	sleep
 }
 
-$impl Dog as Animal {
+$impl Dog as Annimal {
 	$header = "dog_cat.h"
 	speak = dog_speak
 	eat = dog_eat

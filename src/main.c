@@ -2,6 +2,7 @@
 #include "parser.h"
 #include "stringdef.h"
 #include "vmem_arena.h"
+#include <setjmp.h>
 #include <stdio.h>
 
 int parse_arg(bstr arg, bstr* input_path, bstr* output_path) {
@@ -19,33 +20,34 @@ int parse_arg(bstr arg, bstr* input_path, bstr* output_path) {
 
 int main(int argc, char** argv) {
   if (argc != 2) {
-    fprintf(stderr, "Error: expected a single inputfile.mm:outputlocation, found either no "
-                    "arguments or extra arguments\n");
+    fprintf(stderr, "Error: Invalid usage\n"
+                    "Usage: macromancer inputfile:outputfile\n");
     return -1;
   }
-  VMEMArena* arena = vmarena_new(1024 * 128); // max size is 128 kb
-  int res = 0;
+
   bstr confpath;
   bstr output_path;
 
   if (parse_arg(argv[1], &confpath, &output_path) < 0) {
-    fprintf(stderr, "Error: unexpected argument, expected inputfile.mm:outputlocation\n");
-    res = -1;
-    goto end;
+    fprintf(stderr, "Error: unexpected argument, expected inputfile.mm:outputfile\n");
+    return -1;
   }
 
+  jmp_buf onerror;
   Parser p;
-  read_conf(&p, confpath, arena);
-  if (p.err == PE_OK) {
-    Codegen c;
-    generate_code(&c, &p);
-    codegen_destroy(&c);
+  VMEMArena* arena = vmarena_new(1024 * 128); // max size is 128 kb
+
+  if (setjmp(onerror) == 0) {
+    read_conf(&p, confpath, arena, &onerror);
   } else {
     printf("Parsing failed, exiting\n");
+    return -1;
   }
-  parser_destroy(&p);
 
-end:
+  Codegen c;
+  generate_code(&c, &p);
+  codegen_destroy(&c);
+  parser_destroy(&p);
   vmarena_free(arena);
-  return res;
+  return 0;
 }

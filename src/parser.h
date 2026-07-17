@@ -4,6 +4,7 @@
 #include "stringdef.h"
 #include "vec.h"
 #include "vmem_arena.h"
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdio.h>
 
@@ -36,14 +37,19 @@ typedef struct {
 } ExportCmd;
 
 typedef struct {
-  FILE* file;
+  size_t row, col, id, len;
+} Position;
+
+typedef struct {
   vec(Interface) interfaces;
   vec(ExportCmd) exports;
-  ParserError err;
+  ostr source;
+  Position pos;
+  jmp_buf* onerror;
   VMEMArena* arena;
 } Parser;
 
-void read_conf(Parser* p, bstr confpath, VMEMArena* arena);
+void read_conf(Parser* p, bstr confpath, VMEMArena* arena, jmp_buf* onerror);
 void parser_destroy(Parser* p);
 
 

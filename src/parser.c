@@ -1,7 +1,10 @@
+#include "diagnostics.h"
 #include "parser.h"
 #include "vec.h"
 #include "vmem_arena.h"
+#include <assert.h>
 #include <ctype.h>
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -20,72 +23,74 @@
   X("interface", parse_interface)                                                                  \
   X("export", parse_export)
 
-ostr dup(Parser* p, bstr str) {
-  size_t len = strlen(str);
-  ostr dup = vmarena_alloc(p->arena, len);
-  memcpy(dup, str, len);
-  return dup;
+int nextch(Parser* p) {
+  if (p->source[p->pos.id] == '\0')
+    return EOF;
+  char ch = p->source[p->pos.id++];
+  if (ch == '\n') {
+    p->pos.row++;
+    p->pos.col = 0;
+  } else
+    p->pos.col++;
+  return ch;
 }
 
-void fetch_tok(Parser* p, bstr buf, int start_ch) {
-  int i = 0;
-  int ch = start_ch;
-  while (!isspace(ch)) {
-    buf[i++] = ch;
-    ch = fgetc(p->file);
-    if (ch == EOF) {
-      p->err = PE_ERR;
-      return;
-    }
-  }
-
-  buf[i++] = '\0';
-  return;
+int peekch(Parser* p) {
+  if (p->source[p->pos.id] == '\0')
+    return EOF;
+  return p->source[p->pos.id];
 }
 
-int skip_comment(Parser* p, int ch) {
+void skip_comment(Parser* p) {
+  int ch = peekch(p);
   if (ch == '#') {
+    ch = peekch(p);
     while (ch != '\n' && ch != EOF) {
-      ch = fgetc(p->file);
+      ch = nextch(p);
+      ch = peekch(p);
     }
   }
-  return ch;
 }
 
-int skip_space(Parser* p, int ch) {
+void skip_space(Parser* p) {
+  int ch = peekch(p);
   while (isspace(ch) && ch != EOF) {
-    ch = fgetc(p->file);
+    ch = nextch(p);
+    ch = peekch(p);
   }
-  return ch;
 }
 
-int skip_unwanted(Parser* p) {
-  int ch = skip_space(p, fgetc(p->file));
-  while (ch != EOF) {
-    if (isspace(ch))
-      ch = skip_space(p, ch);
-    else if (ch == '#')
-      ch = skip_comment(p, ch);
-    else
-      break;
+void skip_unwanted(Parser* p) {
+  int ch = peekch(p);
+  while (ch != EOF && (isspace(ch) || ch == '#')) {
+    skip_comment(p);
+    skip_space(p);
+    ch = peekch(p);
   }
-  return ch;
 }
 
-ostr get_tok(Parser* p, char ch) {
-  char buf[MAX_ID_LEN];
-  fetch_tok(p, buf, ch);
-  return dup(p, buf);
+bstr get_tok(Parser* p) {
+  skip_unwanted(p);
+  bstr str = &p->source[p->pos.id];
+  char ch = peekch(p);
+  int len = 0;
+  while (!isspace(ch) && ch != EOF) {
+    nextch(p);
+    ch = peekch(p);
+    len++;
+  }
+  assert(len != 0);
+  skip_unwanted(p);
+  ostr cpy = vmarena_alloc(p->arena, len + 1);
+  cpy[len] = '\0';
+  memcpy(cpy, str, len);
+  return cpy;
 }
 
-void expect(Parser* p, bstr str, char ch) {
-  char buf[MAX_ID_LEN];
-  fetch_tok(p, buf, ch);
-  if (strncmp(buf, str, 2) != 0) {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `%s` found %s\n", str, buf);
-    return;
-  }
+void expect(Parser* p, bstr str) {
+  bstr buf = get_tok(p);
+  if (strcmp(buf, str) != 0)
+    throw_error(p, ERR_UNEXPECTED_TOK, str, buf);
 }
 
 void print_interface(Interface* iface) {
@@ -100,53 +105,43 @@ void print_interface(Interface* iface) {
 }
 
 void parse_interface(Parser* p) {
-  int ch = skip_unwanted(p);
-  ostr name = get_tok(p, ch);
-
-  ch = skip_unwanted(p);
-  expect(p, "as", ch);
-  ch = skip_unwanted(p);
-
-  char type[MAX_ID_LEN];
-  fetch_tok(p, type, ch);
+  ostr name = get_tok(p);
+  expect(p, "as");
+  bstr type = get_tok(p);
 
   bool is_dynamic;
   if (strcmp(type, "Dynamic") == 0)
     is_dynamic = true;
   else if (strcmp(type, "Static") == 0)
     is_dynamic = false;
-  else {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Expected `Dynamic` or `Static` found %s\n", type);
-    return;
-  }
+  else
+    throw_error(p, ERR_UNEXPECTED_TOK, "`Dynamic` or `Static`", type);
 
-  ch = skip_unwanted(p);
-  expect(p, "{", ch);
-  ch = skip_unwanted(p);
+  expect(p, "{");
 
   Interface iface = {};
   iface.is_dynamic = is_dynamic;
   iface.name = name;
 
-  while (ch != '}') {
-    vec_push(iface.functions, get_tok(p, ch));
-    ch = skip_unwanted(p);
+  while (true) {
+    vec_push(iface.functions, get_tok(p));
+    skip_unwanted(p);
+    int ch = peekch(p);
+    if (ch == EOF)
+      throw_error(p, ERR_UNEXPECTED_TOK, "}", "End of File");
+    else if (ch == '}')
+      break;
   }
+  nextch(p); // skip }
 
   vec_push(p->interfaces, iface);
   return;
 }
 
-void parse_pair(Parser* p, ImplKVPair* pair, int* ch) {
-  ostr key = get_tok(p, *ch);
-  *ch = skip_unwanted(p);
-
-  expect(p, "=", *ch);
-  *ch = skip_unwanted(p);
-
-  ostr val = get_tok(p, *ch);
-
+void parse_pair(Parser* p, ImplKVPair* pair) {
+  ostr key = get_tok(p);
+  expect(p, "=");
+  ostr val = get_tok(p);
   pair->key = key;
   pair->val = val;
 }
@@ -171,7 +166,7 @@ Interface* find_iface(Parser* p, bstr name) {
 
 // Position in relative order in which a function is defined in the interface
 int find_fn_id(Interface* iface, bstr name) {
-  for (int i = 0; i < iface->functions.n; i++) {
+  for (size_t i = 0; i < iface->functions.n; i++) {
     if (strcmp(iface->functions.get[i], name) == 0)
       return i;
   }
@@ -190,43 +185,26 @@ void print_impl(Impl* impl) {
 }
 
 void parse_impl(Parser* p) {
-  int ch = skip_unwanted(p);
-  ostr name = get_tok(p, ch);
+  ostr name = get_tok(p);
+  expect(p, "as");
 
-  ch = skip_unwanted(p);
-  expect(p, "as", ch);
-  ch = skip_unwanted(p);
-
-  char iface_name[MAX_ID_LEN];
-  fetch_tok(p, iface_name, ch);
+  bstr iface_name = get_tok(p);
 
   Interface* iface = find_iface(p, iface_name);
-  if (iface == NULL) {
-    fprintf(stderr, "Error: Interface %s doesn't exist\n", iface_name);
-    p->err = PE_ERR;
-    return;
-  }
-
-  ch = skip_unwanted(p);
-  expect(p, "{", ch);
-  ch = skip_unwanted(p);
+  if (iface == NULL)
+    throw_error(p, ERR_INTERFACE_DOESNT_EXIST, iface_name);
+  expect(p, "{");
 
   ImplKVPair header_pair;
-  parse_pair(p, &header_pair, &ch);
+  parse_pair(p, &header_pair);
 
-  if (strcmp(header_pair.key, "$header") != 0) {
-    fprintf(stderr, "Error: Expected `$header = none` or `$header = \"xxxx.h\", found %s\n`",
-            header_pair.key);
-    p->err = PE_ERR;
-    return;
-  }
+  if (strcmp(header_pair.key, "$header") != 0)
+    throw_error(p, ERR_UNEXPECTED_TOK, "`$header = none` or `$header = \"xxxxx.h\"`",
+                header_pair.key);
   if (strcmp(header_pair.val, "none") == 0)
     header_pair.val = NULL;
-  else if (ch != '"' && header_pair.val[strlen(header_pair.val) - 1] != '"') {
-    fprintf(stderr, "Header file should be in double-quotes \"xxx.h\", not %s\n", header_pair.val);
-    p->err = PE_ERR;
-    return;
-  }
+  else if (header_pair.val[0] != '"' || header_pair.val[strlen(header_pair.val) - 1] != '"')
+    throw_error(p, ERR_HEADER_FILE_NOT_IN_DOUBLE_QUOTES, header_pair.val);
 
   Impl impl = {};
   impl.header = header_pair.val;
@@ -234,22 +212,16 @@ void parse_impl(Parser* p) {
   vec_resize(impl.pairs, iface->functions.n);
 
   while (true) {
-    ch = skip_unwanted(p);
-    if (ch == '}')
+    if (peekch(p) == '}') {
+      nextch(p);
       break;
-
+    }
     ImplKVPair pair;
-    parse_pair(p, &pair, &ch);
+    parse_pair(p, &pair);
 
     int id = find_fn_id(iface, pair.key);
-    if (id < 0) {
-      fprintf(
-          stderr,
-          "Error: function %s not defined in interface %s but referenced in Implementation %s\n",
-          pair.key, iface->name, impl.name);
-      p->err = PE_ERR;
-      return;
-    }
+    if (id < 0)
+      throw_error(p, ERR_FN_NOT_DEFINED_BUT_REFERENCED, pair.key, iface->name, impl.name);
     impl.pairs.get[id] = pair;
     impl.pairs.n++;
   }
@@ -262,30 +234,17 @@ void print_export(ExportCmd* cmd) {
 }
 
 void parse_export(Parser* p) {
-  int ch = skip_unwanted(p);
-
-  char iface_name[MAX_ID_LEN];
-  fetch_tok(p, iface_name, ch);
-
+  bstr iface_name = get_tok(p);
   Interface* iface = find_iface(p, iface_name);
-  if (iface == NULL) {
-    fprintf(stderr, "Error: Interface %s doesn't exist\n", iface_name);
-    p->err = PE_ERR;
-    return;
-  }
+  if (iface == NULL)
+    throw_error(p, ERR_INTERFACE_DOESNT_EXIST, iface_name);
 
-  ch = skip_unwanted(p);
-  expect(p, "as", ch);
-  ch = skip_unwanted(p);
+  expect(p, "as");
 
-  char impl_name[MAX_ID_LEN];
-  fetch_tok(p, impl_name, ch);
+  bstr impl_name = get_tok(p);
   Impl* impl = find_impl(p, iface, impl_name);
-  if (impl == NULL) {
-    p->err = PE_ERR;
-    fprintf(stderr, "Error: Implemetation %s doesn't exist\n", impl_name);
-    return;
-  }
+  if (impl == NULL)
+    throw_error(p, ERR_IMPL_NOT_DEFINED, impl_name);
 
   ExportCmd export;
   export.iface = iface;
@@ -300,40 +259,45 @@ void parse_keyw(Parser* p, bstr keyw) {
   }
   DISPATCH_TABLE(X)
 #undef X
-  fprintf(stderr, "Invalid keyword: %s\n", keyw);
-  p->err = PE_ERR;
+  throw_error(p, ERR_INVALID_KEYWORD, keyw);
 }
 
 void parse_conf(Parser* p) {
-  int ch = skip_unwanted(p);
   while (true) {
-    if (ch == EOF)
+    if (peekch(p) == EOF)
       break;
-    if (ch != '$') {
-      fprintf(stderr, "Invalid character found in config: %c\n", ch);
-      p->err = PE_ERR;
-      return;
-    }
-
-    char buf[MAX_ID_LEN];
-    fetch_tok(p, buf, fgetc(p->file));
-    parse_keyw(p, buf);
-    ch = skip_unwanted(p);
+    bstr keyw = get_tok(p);
+    if (keyw[0] != '$')
+      throw_error(p, ERR_UNEXPECTED_TOK, "`$interface`, `$export`, `$impl`", keyw);
+    parse_keyw(p, ++keyw);
   }
   return;
 }
 
-void read_conf(Parser* p, bstr confpath, VMEMArena* arena) {
+void read_into(Parser* p, bstr confpath) {
+  FILE* file = fopen(confpath, "r");
+  if (!file)
+    throw_error(p, ERR_CANT_OPEN_FILE, confpath);
+
+  fseek(file, 0, SEEK_END);
+  long file_size = ftell(file);
+  rewind(file);
+
+  p->source = vmarena_alloc(p->arena, file_size + 1);
+  size_t n = fread(p->source, 1, file_size, file);
+  assert(n == file_size);
+  p->source[file_size] = '\0';
+
+  fclose(file);
+}
+
+void read_conf(Parser* p, bstr confpath, VMEMArena* arena, jmp_buf* onerror) {
   *p = (Parser){0};
   p->arena = arena;
-  p->file = fopen(confpath, "r");
-  if (!p->file) {
-    fprintf(stderr, "Couldnt open file: %s\n", confpath);
-    p->err = PE_ERR;
-    return;
-  }
+  p->onerror = onerror;
+  read_into(p, confpath);
+
   parse_conf(p);
-  fclose(p->file);
 }
 
 void parser_destroy(Parser* p) {

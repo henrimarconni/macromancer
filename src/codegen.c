@@ -86,7 +86,7 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
 
   for (size_t i = 0; i < cmd->iface->functions.n; i++) {
     bstr fn = cmd->iface->functions.get[i];
-    appendf(&c->output, "#define %s %i.%s\n", fn, iface_name, fn);
+    appendf(&c->output, "#define %s %i._%s\n", fn, iface_name, fn);
   }
 }
 
