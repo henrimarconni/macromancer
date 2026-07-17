@@ -1,0 +1,7 @@
+{
+	"InstallScripts" : 
+	[
+		"/home/dove/Projects/macromancer/build/cmake_install.cmake"
+	],
+	"Parallel" : false
+}

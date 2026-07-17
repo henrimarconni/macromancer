@@ -1,0 +1,26 @@
+[
+{
+  "directory": "/home/dove/Projects/macromancer/build",
+  "command": "/usr/bin/cc  -I/home/dove/Projects/macromancer/src -std=gnu11 -o CMakeFiles/macromancer.dir/src/main.c.o -c /home/dove/Projects/macromancer/src/main.c",
+  "file": "/home/dove/Projects/macromancer/src/main.c",
+  "output": "CMakeFiles/macromancer.dir/src/main.c.o"
+},
+{
+  "directory": "/home/dove/Projects/macromancer/build",
+  "command": "/usr/bin/cc  -I/home/dove/Projects/macromancer/src -std=gnu11 -o CMakeFiles/macromancer.dir/src/codegen.c.o -c /home/dove/Projects/macromancer/src/codegen.c",
+  "file": "/home/dove/Projects/macromancer/src/codegen.c",
+  "output": "CMakeFiles/macromancer.dir/src/codegen.c.o"
+},
+{
+  "directory": "/home/dove/Projects/macromancer/build",
+  "command": "/usr/bin/cc  -I/home/dove/Projects/macromancer/src -std=gnu11 -o CMakeFiles/macromancer.dir/src/parser.c.o -c /home/dove/Projects/macromancer/src/parser.c",
+  "file": "/home/dove/Projects/macromancer/src/parser.c",
+  "output": "CMakeFiles/macromancer.dir/src/parser.c.o"
+},
+{
+  "directory": "/home/dove/Projects/macromancer/build",
+  "command": "/usr/bin/cc  -I/home/dove/Projects/macromancer/src -std=gnu11 -o CMakeFiles/macromancer.dir/src/vmem_arena.c.o -c /home/dove/Projects/macromancer/src/vmem_arena.c",
+  "file": "/home/dove/Projects/macromancer/src/vmem_arena.c",
+  "output": "CMakeFiles/macromancer.dir/src/vmem_arena.c.o"
+}
+]
