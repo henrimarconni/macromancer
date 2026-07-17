@@ -1,0 +1,3 @@
+/home/dove/Projects/macromancer/build/CMakeFiles/macromancer.dir
+/home/dove/Projects/macromancer/build/CMakeFiles/edit_cache.dir
+/home/dove/Projects/macromancer/build/CMakeFiles/rebuild_cache.dir
