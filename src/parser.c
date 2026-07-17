@@ -150,14 +150,14 @@ void parse_interface(Parser* p) {
   }
 
   vec_push(p->interfaces, iface);
-  printf("Interface: %s with ", name);
-  for (size_t i = 0; i < iface.functions.n; i++) {
-    printf("%s", iface.functions.get[i]);
-    if (i != iface.functions.n - 1)
-      printf(", ");
-    else
-      printf("\n");
-  }
+  // printf("%s Interface: %s with ", is_dynamic ? "Dynamic" : "Static", name);
+  // for (size_t i = 0; i < iface.functions.n; i++) {
+  //   printf("%s", iface.functions.get[i]);
+  //   if (i != iface.functions.n - 1)
+  //     printf(", ");
+  //   else
+  //     printf("\n");
+  // }
   return;
 }
 
@@ -308,14 +308,14 @@ void parse_impl(Parser* p) {
   }
 
   vec_push(iface->impls, impl);
-  printf("Impl: %s with header %s and pairs: ", impl.name, impl.header);
-  for (size_t i = 0; i < impl.pairs.n; i++) {
-    printf("%s:%s", impl.pairs.get[i].key, impl.pairs.get[i].val);
-    if (i != impl.pairs.n - 1)
-      printf(", ");
-    else
-      printf("\n");
-  }
+  // printf("Impl: %s with header %s and pairs: ", impl.name, impl.header);
+  // for (size_t i = 0; i < impl.pairs.n; i++) {
+  //   printf("%s:%s", impl.pairs.get[i].key, impl.pairs.get[i].val);
+  //   if (i != impl.pairs.n - 1)
+  //     printf(", ");
+  //   else
+  //     printf("\n");
+  // }
 }
 
 void parse_export(Parser* p) {
@@ -362,7 +362,7 @@ void parse_export(Parser* p) {
   export.impl = impl;
   vec_push(p->exports, export);
 
-  printf("Export: %s as %s by default\n", iface->name, impl->name);
+  // printf("Export: %s as %s by default\n", iface->name, impl->name);
 }
 
 void parse_keyw(Parser* p, bstr keyw) {
@@ -407,4 +407,16 @@ void read_conf(Parser* p, bstr confpath, VMEMArena* arena) {
   }
   parse_conf(p);
   fclose(p->file);
+}
+
+void parser_destroy(Parser* p) {
+  vec_destroy(p->exports);
+  for (size_t i = 0; i < p->interfaces.n; i++) {
+    Interface* iface = &p->interfaces.get[i];
+    vec_destroy(iface->functions);
+    for (size_t i = 0; i < iface->impls.n; i++)
+      vec_destroy(iface->impls.get[i].pairs);
+    vec_destroy(iface->impls);
+  }
+  vec_destroy(p->interfaces);
 }

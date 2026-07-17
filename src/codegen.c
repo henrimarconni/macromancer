@@ -1,38 +1,149 @@
 #include "codegen.h"
 #include "parser.h"
 #include "vec.h"
+#include <assert.h>
+#include <stdarg.h>
+#include <stdio.h>
 
 void append_str(StringBuilder* b, bstr str) {
-  while (*str) {
+  while (*str != '\0') {
     vec_push(*b, *(str++));
   }
 }
 
-int export_static(Codegen* c, ExportCmd* cmd) { return 0; }
+void appendf(StringBuilder* b, bstr fstr, ...) {
+  va_list args;
+  va_start(args, fstr);
+  while (*fstr != '\0') {
+    if (*fstr != '%')
+      vec_push(*b, *(fstr++));
+    else {
+      switch (*++fstr) {
+      case 's':
+        append_str(b, va_arg(args, bstr));
+        break;
+      case 't':
+        append_str(b, "MM_");
+        append_str(b, va_arg(args, bstr));
+        append_str(b, "Interface");
+        break;
+      case 'i':
+        append_str(b, "mm_");
+        append_str(b, va_arg(args, bstr));
+        append_str(b, "_iface");
+        break;
+      case 'v':
+        append_str(b, "mm_");
+        append_str(b, va_arg(args, bstr));
+        append_str(b, "_vt");
+        break;
+      default:
+        printf("Invalid specifier: %c\n", *fstr);
+        fflush(stdout);
+        assert(false && "Invalid format specifier");
+      }
+      fstr++;
+    }
+  }
+  va_end(args);
+}
 
-int export_dynamic(Codegen* c, ExportCmd* cmd) { return 0; }
+void append_ch(StringBuilder* b, char ch) { vec_push(*b, ch); }
 
-int export(Codegen* c, ExportCmd* cmd) {
+#define iface_name cmd->iface->name
+#define impl_name cmd->impl->name
+#define impl_pairs cmd->impl->pairs
+
+void export_static(Codegen* c, ExportCmd* cmd) {
+  append_str(&c->output, "\n");
+  for (size_t i = 0; i < impl_pairs.n; i++) {
+    ImplKVPair* pair = &impl_pairs.get[i];
+    appendf(&c->output, "#define %s %s\n", pair->key, pair->val);
+  }
+  append_str(&c->output, "\n\n");
+}
+
+void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
+  append_str(&c->output, "\n\n");
+
+  appendf(&c->output, "struct %t {\n", iface_name);
+  for (size_t i = 0; i < impl_pairs.n; i++) {
+    ImplKVPair* pair = &impl_pairs.get[i];
+    appendf(&c->output, "  typeof(%s) *%s;\n", pair->val, pair->key);
+  }
+  append_str(&c->output, "};\n\n");
+
+  appendf(&c->output, "extern struct %t %i;\n\n", iface_name, iface_name);
+
+  for (size_t i = 0; i < cmd->iface->impls.n; i++) {
+    Impl* impl = &cmd->iface->impls.get[i];
+    appendf(&c->output, "extern const struct %t %v;\n", iface_name, impl->name);
+  }
+
+  append_ch(&c->output, '\n');
+
+  for (size_t i = 0; i < cmd->iface->functions.n; i++) {
+    bstr fn = cmd->iface->functions.get[i];
+    appendf(&c->output, "#define %s %i.%s\n", fn, iface_name, fn);
+  }
+}
+
+void export_pair_list(Codegen* c, ExportCmd* cmd, Impl* impl) {
+  for (size_t i = 0; i < impl->pairs.n; i++) {
+    ImplKVPair* pair = &impl->pairs.get[i];
+    appendf(&c->output, "  .%s = %s", pair->key, pair->val);
+    if (i == impl->pairs.n - 1)
+      append_str(&c->output, "\n};\n\n");
+    else
+      append_str(&c->output, ",\n");
+  }
+}
+
+void export_dynamic_source(Codegen* c, ExportCmd* cmd) {
+  for (size_t i = 0; i < cmd->iface->impls.n; i++) {
+    Impl* impl = &cmd->iface->impls.get[i];
+    appendf(&c->output, "const struct %t %v = {\n", iface_name, impl->name);
+    export_pair_list(c, cmd, impl);
+  }
+  appendf(&c->output, "struct %t %i = {\n", iface_name, iface_name);
+  export_pair_list(c, cmd, cmd->impl);
+}
+
+void export_dynamic(Codegen* c, ExportCmd* cmd) {
+  export_dynamic_header(c, cmd);
+
+  appendf(&c->output, "\n\n#ifdef MM_%s_IMPLEMENTATION\n\n", iface_name);
+  export_dynamic_source(c, cmd);
+  append_str(&c->output, "\n#endif\n");
+}
+
+void export(Codegen* c, ExportCmd* cmd) {
+  // header guard
+  appendf(&c->output, "#ifndef MM_%s_H__\n", iface_name);
+  appendf(&c->output, "#define MM_%s_H__\n", iface_name);
+
   bstr header = cmd->impl->header;
   if (header != NULL) {
-    append_str(&c->output, "#include \"");
-    append_str(&c->output, header);
-    append_str(&c->output, "\"\n");
+    appendf(&c->output, "#include %s\n", cmd->impl->header);
   }
 
   if (cmd->iface->is_dynamic)
-    return export_dynamic(c, cmd);
+    export_dynamic(c, cmd);
   else
-    return export_static(c, cmd);
+    export_static(c, cmd);
+
+  append_str(&c->output, "#endif\n");
 }
 
-int generate_code(Codegen* c, Parser* p) {
+void generate_code(Codegen* c, Parser* p) {
   *c = (Codegen){0};
   c->parser = p;
 
-  for (size_t i = 0; i < p->exports.n; i++) {
-    if (export(c, &p->exports.get[i]) < 0)
-      return -1;
-  }
-  return 0;
+  for (size_t i = 0; i < p->exports.n; i++)
+    export(c, &p->exports.get[i]);
+
+  append_ch(&c->output, '\0');
+  printf("Generated: {\n%s\n}\n", c->output.get);
 }
+
+void codegen_destroy(Codegen* c) { vec_destroy(c->output); }

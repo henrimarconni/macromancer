@@ -44,6 +44,7 @@ typedef struct {
 } Parser;
 
 void read_conf(Parser* p, bstr confpath, VMEMArena* arena);
+void parser_destroy(Parser* p);
 
 
 #endif

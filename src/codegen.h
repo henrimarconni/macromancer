@@ -11,7 +11,8 @@ typedef struct {
   StringBuilder output;
 } Codegen;
 
-int generate_code(Codegen* c, Parser* p);
+void generate_code(Codegen* c, Parser* p);
+void codegen_destroy(Codegen* c);
 
 
 #endif
