@@ -12,6 +12,8 @@ void cat_speak();
 
 #ifdef DOG_CAT_IMPLEMENTATION
 
+#include <stdio.h>
+
 void dog_eat() {
   printf("dog_eat\n");
 }

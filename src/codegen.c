@@ -3,7 +3,9 @@
 #include "vec.h"
 #include <assert.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
+#include <string.h>
 
 void append_str(StringBuilder* b, bstr str) {
   while (*str != '\0') {
@@ -69,7 +71,7 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
   appendf(&c->output, "struct %t {\n", iface_name);
   for (size_t i = 0; i < impl_pairs.n; i++) {
     ImplKVPair* pair = &impl_pairs.get[i];
-    appendf(&c->output, "  typeof(%s) *%s;\n", pair->val, pair->key);
+    appendf(&c->output, "  typeof(%s)* _%s;\n", pair->val, pair->key);
   }
   append_str(&c->output, "};\n\n");
 
@@ -91,7 +93,7 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
 void export_pair_list(Codegen* c, ExportCmd* cmd, Impl* impl) {
   for (size_t i = 0; i < impl->pairs.n; i++) {
     ImplKVPair* pair = &impl->pairs.get[i];
-    appendf(&c->output, "  .%s = %s", pair->key, pair->val);
+    appendf(&c->output, "  ._%s = %s", pair->key, pair->val);
     if (i == impl->pairs.n - 1)
       append_str(&c->output, "\n};\n\n");
     else
@@ -117,16 +119,32 @@ void export_dynamic(Codegen* c, ExportCmd* cmd) {
   append_str(&c->output, "\n#endif\n");
 }
 
+typedef vec(bstr) HideSet;
+bool contains(HideSet v, bstr header) {
+  for (size_t i = 0; i < v.n; i++) {
+    if (strcmp(header, v.get[i]) == 0)
+      return true;
+  }
+  return false;
+}
+
 void export(Codegen* c, ExportCmd* cmd) {
   // header guard
   appendf(&c->output, "#ifndef MM_%s_H__\n", iface_name);
   appendf(&c->output, "#define MM_%s_H__\n", iface_name);
 
-  bstr header = cmd->impl->header;
-  if (header != NULL) {
-    appendf(&c->output, "#include %s\n", cmd->impl->header);
+  // Includes
+  HideSet hideset = {0};
+  for (size_t i = 0; i < cmd->iface->impls.n; i++) {
+    bstr header = cmd->iface->impls.get[i].header;
+    if (header != NULL && !contains(hideset, header)) {
+      appendf(&c->output, "#include %s\n", header);
+    }
+    vec_push(hideset, header);
   }
+  vec_destroy(hideset);
 
+  // Export code
   if (cmd->iface->is_dynamic)
     export_dynamic(c, cmd);
   else
@@ -143,7 +161,7 @@ void generate_code(Codegen* c, Parser* p) {
     export(c, &p->exports.get[i]);
 
   append_ch(&c->output, '\0');
-  printf("Generated: {\n%s\n}\n", c->output.get);
+  printf("%s\n", c->output.get);
 }
 
 void codegen_destroy(Codegen* c) { vec_destroy(c->output); }
