@@ -161,7 +161,6 @@ void generate_code(Codegen* c, Parser* p) {
     export(c, &p->exports.get[i]);
 
   append_ch(&c->output, '\0');
-  printf("%s\n", c->output.get);
 }
 
 void codegen_destroy(Codegen* c) { vec_destroy(c->output); }

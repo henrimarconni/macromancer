@@ -48,6 +48,20 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath) {
   }
 }
 
+void write_out(bstr output_path, Codegen* c) {
+  FILE* out = output_path ? fopen(output_path, "w") : stdout;
+  if (!out) {
+    printf("Error: Could not open output file %s for writing\n", output_path);
+    exit(-1);
+  }
+
+  fprintf(out, "%s\n", c->output.get);
+
+  if (output_path) {
+    fclose(out);
+  }
+}
+
 int main(int argc, char** argv) {
   bstr confpath = NULL;
   bstr output_path = NULL;
@@ -67,6 +81,8 @@ int main(int argc, char** argv) {
 
   Codegen c;
   generate_code(&c, &p);
+  write_out(output_path, &c);
+
   codegen_destroy(&c);
   parser_destroy(&p);
   vmarena_free(arena);
