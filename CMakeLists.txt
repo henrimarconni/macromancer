@@ -13,6 +13,7 @@ add_executable(
   src/parser.c
   src/vmem_arena.c
   src/diagnostics.c
+  src/ce_getopt.c
 )
 
 target_include_directories(

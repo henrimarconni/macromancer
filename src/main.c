@@ -1,37 +1,58 @@
+#include "ce_getopt.h"
 #include "codegen.h"
 #include "parser.h"
 #include "stringdef.h"
 #include "vmem_arena.h"
+#include <assert.h>
 #include <setjmp.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-int parse_arg(bstr arg, bstr* input_path, bstr* output_path) {
-  *input_path = arg;
-  while (*arg && *arg != ':') {
-    arg++;
+void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath) {
+  ce_initopt(argc, argv);
+  ce_addopt("output", 'o', 's', "Output file.h location");
+  ce_addopt("help", 'h', 0, "Print help message");
+  char ch;
+  ParsedOpt popt;
+  while (ce_getopt(&ch, &popt)) {
+    switch (ch) {
+    case 'o': {
+      if (*output_path) {
+        printf("Error: --output flag used 2+ times\n");
+        exit(-1);
+      }
+      *output_path = popt.s;
+      break;
+    }
+    case 'h': {
+      ce_printhelp();
+      exit(0);
+    }
+    case CE_PLAIN_VALUE: {
+      if (*confpath) {
+        printf("Error: input file already specified: %s, cannot overwrite it with: %s\n", *confpath,
+               popt.s);
+        exit(-1);
+      }
+      *confpath = popt.s;
+      break;
+    }
+
+    default:
+      assert(false && "Unreachable");
+    }
   }
-  if (!*arg) {
-    return -1;
+  if (!*confpath) {
+    printf("Error: input file not specified\n");
+    exit(-1);
   }
-  *arg++ = '\0'; // skip :
-  *output_path = arg;
-  return 0;
 }
 
 int main(int argc, char** argv) {
-  if (argc != 2) {
-    fprintf(stderr, "Error: Invalid usage\n"
-                    "Usage: macromancer inputfile:outputfile\n");
-    return -1;
-  }
+  bstr confpath = NULL;
+  bstr output_path = NULL;
 
-  bstr confpath;
-  bstr output_path;
-
-  if (parse_arg(argv[1], &confpath, &output_path) < 0) {
-    fprintf(stderr, "Error: unexpected argument, expected inputfile.mm:outputfile\n");
-    return -1;
-  }
+  parse_arg(argc, argv, &output_path, &confpath);
 
   jmp_buf onerror;
   Parser p;

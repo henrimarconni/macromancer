@@ -14,29 +14,29 @@ extern struct MM_AnimalInterface mm_Animal_iface;
 extern const struct MM_AnimalInterface mm_Dog_vt;
 extern const struct MM_AnimalInterface mm_Cat_vt;
 
-#define eat mm_Animal_iface.eat
-#define speak mm_Animal_iface.speak
-#define sleep mm_Animal_iface.sleep
+#define eat mm_Animal_iface._eat
+#define speak mm_Animal_iface._speak
+#define sleep mm_Animal_iface._sleep
 
 
 #ifdef MM_Animal_IMPLEMENTATION
 
 const struct MM_AnimalInterface mm_Dog_vt = {
-  dog_eat,
-  dog_speak,
-  dog_sleep
+  ._eat = dog_eat,
+  ._speak = dog_speak,
+  ._sleep = dog_sleep
 };
 
 const struct MM_AnimalInterface mm_Cat_vt = {
-  cat_eat,
-  cat_speak,
-  cat_sleep
+  ._eat = cat_eat,
+  ._speak = cat_speak,
+  ._sleep = cat_sleep
 };
 
 struct MM_AnimalInterface mm_Animal_iface = {
-  dog_eat,
-  dog_speak,
-  dog_sleep
+  ._eat = dog_eat,
+  ._speak = dog_speak,
+  ._sleep = dog_sleep
 };
 
 

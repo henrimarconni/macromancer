@@ -2,7 +2,7 @@
 #define DIAGNOSTICS_H
 
 #include "parser.h"
-#include <stdio.h>
+#include <stdio.h> // IWYU pragma: keep
 
 #define ERRORS(X) \
 X(ERR_UNEXPECTED_TOK, "Expected `%s` found `%s`")\

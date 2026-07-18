@@ -1,9 +1,9 @@
 #ifndef VEC_H
 #define VEC_H
 
-#include <stdlib.h>
+#include <stdlib.h> // IWYU pragma: keep
 
-// Usage: vec.get[i] = etc.
+// Usage: vec.get[i] = element, etc.
 #define vec(T) struct { T* get; size_t m, n; }
 #define vec_grow(vec) ( ((vec).m = ((vec).m ? (vec).m * 2 : 2) ) , (vec).get = realloc((vec).get, (vec).m * sizeof(*(vec).get)))
 #define vec_resize(vec, n) ( (vec).get = realloc((vec).get, n * sizeof(*(vec).get)), (vec).m = n )
