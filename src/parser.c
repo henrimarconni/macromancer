@@ -233,23 +233,38 @@ void print_export(ExportCmd* cmd) {
   printf("Export: %s as %s by default\n", cmd->iface->name, cmd->impl->name);
 }
 
-void parse_export(Parser* p) {
-  bstr iface_name = get_tok(p);
+void add_export(Parser* p, bstr iface_name, bstr impl_name) {
+  int dup_id = -1;
+  for (int i = 0; i < p->exports.n; i++) {
+    ExportCmd cmd = p->exports.get[i];
+    if (strcmp(cmd.iface->name, iface_name) == 0) {
+      add_note(p, NOTE_OVERRIDING_EXPORT, cmd.iface->name, cmd.impl->name, iface_name, impl_name);
+      dup_id = i;
+    }
+  }
+
   Interface* iface = find_iface(p, iface_name);
   if (iface == NULL)
     throw_error(p, ERR_INTERFACE_DOESNT_EXIST, iface_name);
 
-  expect(p, "as");
-
-  bstr impl_name = get_tok(p);
   Impl* impl = find_impl(p, iface, impl_name);
   if (impl == NULL)
-    throw_error(p, ERR_IMPL_NOT_DEFINED, impl_name);
+    throw_error(p, ERR_IMPL_NOT_DEFINED, impl_name, iface_name);
 
   ExportCmd export;
   export.iface = iface;
   export.impl = impl;
-  vec_push(p->exports, export);
+  if (dup_id < 0)
+    vec_push(p->exports, export);
+  else
+    p->exports.get[dup_id] = export;
+}
+
+void parse_export(Parser* p) {
+  bstr iface_name = get_tok(p);
+  expect(p, "as");
+  bstr impl_name = get_tok(p);
+  add_export(p, iface_name, impl_name);
 }
 
 void parse_keyw(Parser* p, bstr keyw) {
@@ -291,13 +306,18 @@ void read_into(Parser* p, bstr confpath) {
   fclose(file);
 }
 
-void read_conf(Parser* p, bstr confpath, VMEMArena* arena, jmp_buf* onerror) {
+void read_conf(Parser* p, bstr confpath, ExportOverrideVec* export_override, VMEMArena* arena,
+               jmp_buf* onerror) {
   *p = (Parser){0};
   p->arena = arena;
   p->onerror = onerror;
   read_into(p, confpath);
-
   parse_conf(p);
+
+  for (size_t i = 0; i < export_override->n; i++) {
+    ExportOverride ov = export_override->get[i];
+    add_export(p, ov.iface, ov.impl);
+  }
 }
 
 void parser_destroy(Parser* p) {

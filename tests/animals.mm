@@ -1,4 +1,4 @@
-$interface Animal as Dynamic {
+$interface Animal as Static {
 	eat
 	speak
 	sleep

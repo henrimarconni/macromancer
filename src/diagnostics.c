@@ -5,9 +5,19 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-bstr type_to_msg[__error_type_len] = {
+#define ANSI_RED "\x1b[31m"
+#define ANSI_YELLOW "\x1b[33m"
+#define ANSI_RESET "\x1b[0m"
+
+bstr errtype_to_msg[__error_type_len] = {
 #define X(_, str) str,
     ERRORS(X)
+#undef X
+};
+
+bstr notetype_to_msg[__note_type_len] = {
+#define X(_, str) str,
+    NOTES(X)
 #undef X
 };
 
@@ -33,11 +43,13 @@ void vformat(bstr str, va_list args) {
 
 [[noreturn]]
 void _throw_error(Parser* p, ErrorType type, ...) {
+  printf(ANSI_RED "Error: " ANSI_RESET);
   va_list args;
   va_start(args, type);
-  vformat(type_to_msg[type], args);
+  vformat(errtype_to_msg[type], args);
   va_end(args);
   putchar('\n');
+
   printf("In line: ");
   size_t start_id = p->pos.id;
   while (p->source[start_id - 1] != '\n')
@@ -49,4 +61,13 @@ void _throw_error(Parser* p, ErrorType type, ...) {
   }
   putchar('\n');
   longjmp(*p->onerror, -1);
+}
+
+void _add_note(Parser* p, NoteType type, ...) {
+  printf(ANSI_YELLOW "Note: " ANSI_RESET);
+  va_list args;
+  va_start(args, type);
+  vformat(notetype_to_msg[type], args);
+  va_end(args);
+  putchar('\n');
 }

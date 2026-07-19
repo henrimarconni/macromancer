@@ -10,6 +10,12 @@
 
 
 typedef struct {
+  bstr impl, iface;
+} ExportOverride;
+
+typedef vec(ExportOverride) ExportOverrideVec;
+
+typedef struct {
   ostr key, val;
 } ImplKVPair;
 
@@ -49,7 +55,7 @@ typedef struct {
   VMEMArena* arena;
 } Parser;
 
-void read_conf(Parser* p, bstr confpath, VMEMArena* arena, jmp_buf* onerror);
+void read_conf(Parser* p, bstr confpath, ExportOverrideVec* export_override, VMEMArena* arena, jmp_buf* onerror);
 void parser_destroy(Parser* p);
 
 

@@ -2,16 +2,20 @@
 #include "codegen.h"
 #include "parser.h"
 #include "stringdef.h"
+#include "vec.h"
 #include "vmem_arena.h"
 #include <assert.h>
 #include <setjmp.h>
 #include <stdio.h>
 #include <stdlib.h>
 
-void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath) {
+void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
+               ExportOverrideVec* overrides) {
   ce_initopt(argc, argv);
   ce_addopt("output", 'o', 's', "Output file.h location");
   ce_addopt("help", 'h', 0, "Print help message");
+  ce_addopt("export", 'e', 's',
+            "Export interface=implementation (overrides the exports written in file)");
   char ch;
   ParsedOpt popt;
   while (ce_getopt(&ch, &popt)) {
@@ -27,6 +31,24 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath) {
     case 'h': {
       ce_printhelp();
       exit(0);
+    }
+    case 'e': {
+      ExportOverride ov;
+      bstr str = popt.s;
+      ov.iface = str;
+
+      while (*str != '\0' && *str != '=')
+        str++;
+      if (*str == '\0') {
+        printf("Error, expected `--export interface=implementation`, found `--export %s`\n",
+               ov.iface);
+        exit(-1);
+      }
+      *str = '\0';
+      ov.impl = str + 1;
+
+      vec_push(*overrides, ov);
+      break;
     }
     case CE_PLAIN_VALUE: {
       if (*confpath) {
@@ -65,15 +87,16 @@ void write_out(bstr output_path, Codegen* c) {
 int main(int argc, char** argv) {
   bstr confpath = NULL;
   bstr output_path = NULL;
+  ExportOverrideVec export_overrides = {};
 
-  parse_arg(argc, argv, &output_path, &confpath);
+  parse_arg(argc, argv, &output_path, &confpath, &export_overrides);
 
   jmp_buf onerror;
   Parser p;
   VMEMArena* arena = vmarena_new(1024 * 128); // max size is 128 kb
 
   if (setjmp(onerror) == 0) {
-    read_conf(&p, confpath, arena, &onerror);
+    read_conf(&p, confpath, &export_overrides, arena, &onerror);
   } else {
     printf("Parsing failed, exiting\n");
     return -1;
