@@ -1,11 +1,18 @@
 #include "codegen.h"
 #include "parser.h"
+#include "span.h"
 #include "vec.h"
 #include <assert.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <string.h>
+
+void append_span(StringBuilder* b, Span span) {
+  while (span.len--) {
+    vec_push(*b, *(span.str++));
+  }
+}
 
 void append_str(StringBuilder* b, bstr str) {
   while (*str != '\0') {
@@ -22,21 +29,21 @@ void appendf(StringBuilder* b, bstr fstr, ...) {
     else {
       switch (*++fstr) {
       case 's':
-        append_str(b, va_arg(args, bstr));
+        append_span(b, va_arg(args, Span));
         break;
       case 't':
         append_str(b, "MM_");
-        append_str(b, va_arg(args, bstr));
+        append_span(b, va_arg(args, Span));
         append_str(b, "Interface");
         break;
       case 'i':
         append_str(b, "mm_");
-        append_str(b, va_arg(args, bstr));
+        append_span(b, va_arg(args, Span));
         append_str(b, "_iface");
         break;
       case 'v':
         append_str(b, "mm_");
-        append_str(b, va_arg(args, bstr));
+        append_span(b, va_arg(args, Span));
         append_str(b, "_vt");
         break;
       default:
@@ -86,9 +93,7 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
 
   for (size_t i = 0; i < cmd->iface->functions.n; i++) {
     Span fn = cmd->iface->functions.get[i];
-    fn.str[fn.len] = '\0';
-    appendf(&c->output, "#define %s %i._%s\n", fn.str, iface_name, fn.str);
-    fn.str[fn.len] = ' ';
+    appendf(&c->output, "#define %s %i._%s\n", fn, iface_name, fn);
   }
 }
 
@@ -122,9 +127,9 @@ void export_dynamic(Codegen* c, ExportCmd* cmd) {
 }
 
 typedef vec(bstr) HideSet;
-bool contains(HideSet v, bstr header) {
+bool contains(HideSet v, Span header) {
   for (size_t i = 0; i < v.n; i++) {
-    if (strcmp(header, v.get[i]) == 0)
+    if (span_str_cmp(header, v.get[i]))
       return true;
   }
   return false;
@@ -139,8 +144,7 @@ void export(Codegen* c, ExportCmd* cmd) {
   HideSet hideset = {0};
   for (size_t i = 0; i < cmd->iface->impls.n; i++) {
     Span header = cmd->iface->impls.get[i].header;
-    header.str[header.len] = '\0';
-    if (header.len != 0 && !contains(hideset, header.str)) {
+    if (header.len != 0 && !contains(hideset, header)) {
       appendf(&c->output, "#include %s\n", header);
     }
     vec_push(hideset, header.str);
