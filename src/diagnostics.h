@@ -6,6 +6,13 @@
 
 
 #define NULL_SPAN (Span){0}
+#define ANSI_RED "\x1b[31m"
+#define ANSI_YELLOW "\x1b[33m"
+#define ANSI_BLUE "\x1b[34m"
+#define ANSI_RESET "\x1b[0m"
+
+#define ERROR_STR ANSI_RED "Error: " ANSI_RESET
+#define NOTE_STR ANSI_BLUE "Error: " ANSI_RESET
 
 #define ERRORS(X) \
 X(ERR_UNEXPECTED_TOK, "Expected `%s` found `%span`")\

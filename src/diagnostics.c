@@ -8,11 +8,6 @@
 #include <stdio.h>
 #include <threads.h>
 
-#define ANSI_RED "\x1b[31m"
-#define ANSI_YELLOW "\x1b[33m"
-#define ANSI_BLUE "\x1b[34m"
-#define ANSI_RESET "\x1b[0m"
-
 bstr errtype_to_msg[__error_type_len] = {
 #define X(_, str) str,
     ERRORS(X)
@@ -62,7 +57,7 @@ void print_line_start(int offset1) {
 
 [[noreturn]]
 void _throw_error(Parser* p, Span span, ErrorType type, ...) {
-  printf(ANSI_RED "Error: " ANSI_RESET);
+  printf(ERROR_STR);
   va_list args;
   va_start(args, type);
   vformat(errtype_to_msg[type], args);
@@ -101,7 +96,7 @@ void _throw_error(Parser* p, Span span, ErrorType type, ...) {
 }
 
 void _add_note(Parser* p, NoteType type, ...) {
-  printf(ANSI_YELLOW "Note: " ANSI_RESET);
+  printf(NOTE_STR);
   va_list args;
   va_start(args, type);
   vformat(notetype_to_msg[type], args);

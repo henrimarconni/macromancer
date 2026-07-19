@@ -1,13 +1,20 @@
 #include "ce_getopt.h"
 #include "codegen.h"
+#include "diagnostics.h"
 #include "parser.h"
 #include "stringdef.h"
 #include "vec.h"
 #include "vmem_arena.h"
 #include <assert.h>
 #include <setjmp.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
+
+#define print_err(fstr, ...)                                                                       \
+  do {                                                                                             \
+    fprintf(stderr, ERROR_STR fstr __VA_OPT__(, ) __VA_ARGS__);                                    \
+  } while (0)
 
 void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
                ExportOverrideVec* overrides) {
@@ -22,7 +29,7 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
     switch (ch) {
     case 'o': {
       if (*output_path) {
-        printf("Error: --output flag used 2+ times\n");
+        print_err("--output flag used 2+ times\n");
         exit(-1);
       }
       *output_path = popt.s;
@@ -40,8 +47,7 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
       while (*str != '\0' && *str != '=')
         str++;
       if (*str == '\0') {
-        printf("Error, expected `--export interface=implementation`, found `--export %s`\n",
-               ov.iface);
+        print_err("expected `--export interface=implementation`, found `--export %s`\n", ov.iface);
         exit(-1);
       }
       *str = '\0';
@@ -52,8 +58,8 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
     }
     case CE_PLAIN_VALUE: {
       if (*confpath) {
-        printf("Error: input file already specified: %s, cannot overwrite it with: %s\n", *confpath,
-               popt.s);
+        print_err("input file already specified: %s, cannot overwrite it with: %s\n", *confpath,
+                  popt.s);
         exit(-1);
       }
       *confpath = popt.s;
@@ -65,7 +71,7 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
     }
   }
   if (!*confpath) {
-    printf("Error: input file not specified\n");
+    print_err("input file not specified\n");
     exit(-1);
   }
 }
@@ -73,7 +79,7 @@ void parse_arg(int argc, char** argv, bstr* output_path, bstr* confpath,
 void write_out(bstr output_path, Codegen* c) {
   FILE* out = output_path ? fopen(output_path, "w") : stdout;
   if (!out) {
-    printf("Error: Could not open output file %s for writing\n", output_path);
+    print_err("Could not open output file %s for writing\n", output_path);
     exit(-1);
   }
 
