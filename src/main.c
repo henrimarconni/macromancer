@@ -99,6 +99,10 @@ int main(int argc, char** argv) {
     read_conf(&p, confpath, &export_overrides, arena, &onerror);
   } else {
     printf("Parsing failed, exiting\n");
+    if (export_overrides.get)
+      vec_destroy(export_overrides);
+    parser_destroy(&p);
+    vmarena_free(arena);
     return -1;
   }
 
@@ -106,6 +110,8 @@ int main(int argc, char** argv) {
   generate_code(&c, &p);
   write_out(output_path, &c);
 
+  if (export_overrides.get)
+    vec_destroy(export_overrides);
   codegen_destroy(&c);
   parser_destroy(&p);
   vmarena_free(arena);

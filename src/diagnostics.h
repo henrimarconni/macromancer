@@ -4,22 +4,26 @@
 #include "parser.h"
 #include <stdio.h> // IWYU pragma: keep
 
+
+#define NULL_SPAN (Span){0}
+
 #define ERRORS(X) \
-X(ERR_UNEXPECTED_TOK, "Expected `%s` found `%s`")\
+X(ERR_UNEXPECTED_TOK, "Expected `%s` found `%span`")\
+X(ERR_UNEXPECTED_KEYW, "Unexpected keyword %span, expected one of `$interface`, `$export`, `$impl`")\
 X(ERR_CANT_OPEN_FILE, "Cannot open file: %s")\
-X(ERR_INTERFACE_DOESNT_EXIST, "Interface %s doesn't exist")\
-X(ERR_HEADER_FILE_NOT_IN_DOUBLE_QUOTES, "Header file must be in double quotes and shouldn't have spaces: found %s")\
-X(ERR_FN_NOT_DEFINED_BUT_REFERENCED, "Function %s is not defined in interface %s but is referenced in implementation %s")\
-X(ERR_IMPL_NOT_DEFINED, "No implementation %s found for interface %s")\
-X(ERR_INVALID_KEYWORD, "Invalid Keyword: `%s`")
+X(ERR_INTERFACE_DOESNT_EXIST, "Interface %span doesn't exist")\
+X(ERR_HEADER_FILE_NOT_IN_DOUBLE_QUOTES, "Header file must be in double quotes and shouldn't have spaces: found %span")\
+X(ERR_FN_NOT_DEFINED_BUT_REFERENCED, "Function %span is not defined in interface %span but is referenced in implementation %span")\
+X(ERR_IMPL_NOT_DEFINED, "No implementation %span found for interface %span")
 
 #define NOTES(X)\
-X(NOTE_OVERRIDING_EXPORT_CLI, "Overriding `export %s as %s` with `export %s as %s` from command line argument --export")\
-X(NOTE_OVERRIDING_EXPORT_CONF, "Overriding `export %s as %s` with `export %s as %s` from configuration")
+X(NOTE_OVERRIDING_EXPORT_CLI, "Overriding `export %span as %span` with `export %span as %span` from command-line argument `--export`")\
+X(NOTE_OVERRIDING_EXPORT_CONF, "Overriding `export %span as %span` with `export %span as %span` from configuration")
 
 
 #define FORMAT_SPECS(X) \
-X("%s", print_span, Span)\
+X("%span", print_span, Span)\
+X("%s", print_str, bstr)\
 X("%c", putchar, int)
 
 typedef enum {
@@ -37,10 +41,10 @@ __error_type_len
 } ErrorType;
 
 
-#define throw_error(p, type, ...)\
+#define throw_error(p, span, type, ...)\
 do {\
   printf("In %s:%d %s():\n", __FILE__, __LINE__, __func__);\
-  _throw_error((p), (type), __VA_ARGS__);\
+  _throw_error((p), (span), (type), __VA_ARGS__);\
 } while (0)
 
 #define add_note(p, type, ...)\
@@ -50,7 +54,7 @@ do {\
 } while (0)
 
 
-void _throw_error(Parser* p, ErrorType type, ...);
+void _throw_error(Parser* p, Span err_span, ErrorType type, ...);
 void _add_note(Parser* p, NoteType type, ...);
 
 #endif
