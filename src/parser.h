@@ -4,6 +4,7 @@
 #include "stringdef.h"
 #include "vec.h"
 #include "vmem_arena.h"
+#include "span.h"
 #include <setjmp.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -16,18 +17,18 @@ typedef struct {
 typedef vec(ExportOverride) ExportOverrideVec;
 
 typedef struct {
-  ostr key, val;
+  Span key, val;
 } ImplKVPair;
 
 typedef struct {
-  bstr name;
-  bstr header;
+  Span name;
+  Span header;
   vec(ImplKVPair) pairs;
 } Impl;
 
 typedef struct {
-  bstr name;
-  vec(bstr) functions;
+  Span name;
+  vec(Span) functions;
   vec(Impl) impls;
   bool is_dynamic;
 } Interface;

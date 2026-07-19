@@ -1,5 +1,6 @@
 #include "diagnostics.h"
 #include "parser.h"
+#include "span.h"
 #include "stringdef.h"
 #include <setjmp.h>
 #include <stdarg.h>
@@ -21,9 +22,9 @@ bstr notetype_to_msg[__note_type_len] = {
 #undef X
 };
 
-void print_str(bstr str) {
-  while (*str)
-    putchar(*str++);
+void print_span(Span span) {
+  while (span.len--)
+    putchar(*span.str++);
 }
 
 void vformat(bstr str, va_list args) {

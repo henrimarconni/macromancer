@@ -14,11 +14,12 @@ X(ERR_IMPL_NOT_DEFINED, "No implementation %s found for interface %s")\
 X(ERR_INVALID_KEYWORD, "Invalid Keyword: `%s`")
 
 #define NOTES(X)\
-X(NOTE_OVERRIDING_EXPORT, "Overriding `export %s as %s` with `export %s as %s`")
+X(NOTE_OVERRIDING_EXPORT_CLI, "Overriding `export %s as %s` with `export %s as %s` from command line argument --export")\
+X(NOTE_OVERRIDING_EXPORT_CONF, "Overriding `export %s as %s` with `export %s as %s` from configuration")
 
 
 #define FORMAT_SPECS(X) \
-X("%s", print_str, bstr)\
+X("%s", print_span, Span)\
 X("%c", putchar, int)
 
 typedef enum {

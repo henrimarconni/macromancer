@@ -1,5 +1,6 @@
 #include "diagnostics.h"
 #include "parser.h"
+#include "span.h"
 #include "vec.h"
 #include "vmem_arena.h"
 #include <assert.h>
@@ -69,8 +70,9 @@ void skip_unwanted(Parser* p) {
   }
 }
 
-bstr get_tok(Parser* p) {
+Span get_tok(Parser* p) {
   skip_unwanted(p);
+  Span span = {p->pos.row, p->pos.col, 0, &p->source[p->pos.id]};
   bstr str = &p->source[p->pos.id];
   char ch = peekch(p);
   int len = 0;
@@ -80,39 +82,26 @@ bstr get_tok(Parser* p) {
     len++;
   }
   assert(len != 0);
+  span.len = len;
   skip_unwanted(p);
-  ostr cpy = vmarena_alloc(p->arena, len + 1);
-  cpy[len] = '\0';
-  memcpy(cpy, str, len);
-  return cpy;
+  return span;
 }
 
 void expect(Parser* p, bstr str) {
-  bstr buf = get_tok(p);
-  if (strcmp(buf, str) != 0)
-    throw_error(p, ERR_UNEXPECTED_TOK, str, buf);
-}
-
-void print_interface(Interface* iface) {
-  printf("%s Interface %s: ", iface->is_dynamic ? "Dynamic" : "Static", iface->name);
-  for (size_t i = 0; i < iface->functions.n; i++) {
-    printf("%s", iface->functions.get[i]);
-    if (i == iface->functions.n - 1)
-      printf("\n");
-    else
-      printf(", ");
-  }
+  Span span = get_tok(p);
+  if (!span_str_cmp(span, str))
+    throw_error(p, ERR_UNEXPECTED_TOK, str, span);
 }
 
 void parse_interface(Parser* p) {
-  ostr name = get_tok(p);
+  Span name = get_tok(p);
   expect(p, "as");
-  bstr type = get_tok(p);
+  Span type = get_tok(p);
 
   bool is_dynamic;
-  if (strcmp(type, "Dynamic") == 0)
+  if (span_str_cmp(type, "Dynamic"))
     is_dynamic = true;
-  else if (strcmp(type, "Static") == 0)
+  else if (span_str_cmp(type, "Static"))
     is_dynamic = false;
   else
     throw_error(p, ERR_UNEXPECTED_TOK, "`Dynamic` or `Static`", type);
@@ -139,56 +128,45 @@ void parse_interface(Parser* p) {
 }
 
 void parse_pair(Parser* p, ImplKVPair* pair) {
-  ostr key = get_tok(p);
+  Span key = get_tok(p);
   expect(p, "=");
-  ostr val = get_tok(p);
+  Span val = get_tok(p);
   pair->key = key;
   pair->val = val;
 }
 
-Impl* find_impl(Parser* p, Interface* iface, bstr name) {
+Impl* find_impl(Parser* p, Interface* iface, Span name) {
   for (size_t i = 0; i < iface->impls.n; i++) {
     Impl* impl = &iface->impls.get[i];
-    if (strcmp(impl->name, name) == 0)
+    if (span_cmp(impl->name, name))
       return impl;
   }
   return NULL;
 }
 
-Interface* find_iface(Parser* p, bstr name) {
+Interface* find_iface(Parser* p, Span name) {
   for (size_t i = 0; i < p->interfaces.n; i++) {
     Interface* iface = &p->interfaces.get[i];
-    if (strcmp(iface->name, name) == 0)
+    if (span_cmp(iface->name, name))
       return iface;
   }
   return NULL;
 }
 
 // Position in relative order in which a function is defined in the interface
-int find_fn_id(Interface* iface, bstr name) {
+int find_fn_id(Parser* p, Interface* iface, Span name) {
   for (size_t i = 0; i < iface->functions.n; i++) {
-    if (strcmp(iface->functions.get[i], name) == 0)
+    if (span_cmp(iface->functions.get[i], name))
       return i;
   }
   return -1;
 }
 
-void print_impl(Impl* impl) {
-  printf("Impl: %s with header %s and pairs: ", impl->name, impl->header);
-  for (size_t i = 0; i < impl->pairs.n; i++) {
-    printf("%s:%s", impl->pairs.get[i].key, impl->pairs.get[i].val);
-    if (i != impl->pairs.n - 1)
-      printf(", ");
-    else
-      printf("\n");
-  }
-}
-
 void parse_impl(Parser* p) {
-  ostr name = get_tok(p);
+  Span name = get_tok(p);
   expect(p, "as");
 
-  bstr iface_name = get_tok(p);
+  Span iface_name = get_tok(p);
 
   Interface* iface = find_iface(p, iface_name);
   if (iface == NULL)
@@ -198,12 +176,12 @@ void parse_impl(Parser* p) {
   ImplKVPair header_pair;
   parse_pair(p, &header_pair);
 
-  if (strcmp(header_pair.key, "$header") != 0)
+  if (!span_str_cmp(header_pair.key, "$header"))
     throw_error(p, ERR_UNEXPECTED_TOK, "`$header = none` or `$header = \"xxxxx.h\"`",
                 header_pair.key);
-  if (strcmp(header_pair.val, "none") == 0)
-    header_pair.val = NULL;
-  else if (header_pair.val[0] != '"' || header_pair.val[strlen(header_pair.val) - 1] != '"')
+  if (span_str_cmp(header_pair.val, "none"))
+    header_pair.val.len = 0;
+  else if (header_pair.val.str[0] != '"' || header_pair.val.str[header_pair.val.len - 1] != '"')
     throw_error(p, ERR_HEADER_FILE_NOT_IN_DOUBLE_QUOTES, header_pair.val);
 
   Impl impl = {};
@@ -219,7 +197,7 @@ void parse_impl(Parser* p) {
     ImplKVPair pair;
     parse_pair(p, &pair);
 
-    int id = find_fn_id(iface, pair.key);
+    int id = find_fn_id(p, iface, pair.key);
     if (id < 0)
       throw_error(p, ERR_FN_NOT_DEFINED_BUT_REFERENCED, pair.key, iface->name, impl.name);
     impl.pairs.get[id] = pair;
@@ -229,16 +207,43 @@ void parse_impl(Parser* p) {
   vec_push(iface->impls, impl);
 }
 
-void print_export(ExportCmd* cmd) {
-  printf("Export: %s as %s by default\n", cmd->iface->name, cmd->impl->name);
-}
-
-void add_export(Parser* p, bstr iface_name, bstr impl_name) {
+void add_export_cli(Parser* p, bstr iface_name, bstr impl_name) {
   int dup_id = -1;
+  Span iface_span, impl_span;
   for (int i = 0; i < p->exports.n; i++) {
     ExportCmd cmd = p->exports.get[i];
-    if (strcmp(cmd.iface->name, iface_name) == 0) {
-      add_note(p, NOTE_OVERRIDING_EXPORT, cmd.iface->name, cmd.impl->name, iface_name, impl_name);
+    if (span_str_cmp(cmd.iface->name, iface_name)) {
+      add_note(p, NOTE_OVERRIDING_EXPORT_CLI, cmd.iface->name, cmd.impl->name, iface_name,
+               impl_name);
+      dup_id = i;
+    }
+  }
+
+  Interface* iface = find_iface(p, str_to_span(iface_name));
+  if (iface == NULL)
+    throw_error(p, ERR_INTERFACE_DOESNT_EXIST, iface_name);
+
+  Impl* impl = find_impl(p, iface, str_to_span(impl_name));
+  if (impl == NULL)
+    throw_error(p, ERR_IMPL_NOT_DEFINED, impl_name, iface_name);
+
+  ExportCmd export;
+  export.iface = iface;
+  export.impl = impl;
+  if (dup_id < 0)
+    vec_push(p->exports, export);
+  else
+    p->exports.get[dup_id] = export;
+}
+
+void add_export_conf(Parser* p, Span iface_name, Span impl_name) {
+  int dup_id = -1;
+  Span iface_span, impl_span;
+  for (int i = 0; i < p->exports.n; i++) {
+    ExportCmd cmd = p->exports.get[i];
+    if (span_cmp(cmd.iface->name, iface_name)) {
+      add_note(p, NOTE_OVERRIDING_EXPORT_CONF, cmd.iface->name, cmd.impl->name, iface_name,
+               impl_name);
       dup_id = i;
     }
   }
@@ -261,15 +266,15 @@ void add_export(Parser* p, bstr iface_name, bstr impl_name) {
 }
 
 void parse_export(Parser* p) {
-  bstr iface_name = get_tok(p);
+  Span iface_name = get_tok(p);
   expect(p, "as");
-  bstr impl_name = get_tok(p);
-  add_export(p, iface_name, impl_name);
+  Span impl_name = get_tok(p);
+  add_export_conf(p, iface_name, impl_name);
 }
 
-void parse_keyw(Parser* p, bstr keyw) {
+void parse_keyw(Parser* p, Span keyw) {
 #define X(str, fn)                                                                                 \
-  if (strcmp(str, keyw) == 0) {                                                                    \
+  if (span_str_cmp(keyw, str)) {                                                                   \
     return fn(p);                                                                                  \
   }
   DISPATCH_TABLE(X)
@@ -281,10 +286,10 @@ void parse_conf(Parser* p) {
   while (true) {
     if (peekch(p) == EOF)
       break;
-    bstr keyw = get_tok(p);
-    if (keyw[0] != '$')
+    Span keyw = get_tok(p);
+    if (keyw.str[0] != '$')
       throw_error(p, ERR_UNEXPECTED_TOK, "`$interface`, `$export`, `$impl`", keyw);
-    parse_keyw(p, ++keyw);
+    parse_keyw(p, advance_span(keyw));
   }
   return;
 }
@@ -316,7 +321,7 @@ void read_conf(Parser* p, bstr confpath, ExportOverrideVec* export_override, VME
 
   for (size_t i = 0; i < export_override->n; i++) {
     ExportOverride ov = export_override->get[i];
-    add_export(p, ov.iface, ov.impl);
+    add_export_cli(p, ov.iface, ov.impl);
   }
 }
 

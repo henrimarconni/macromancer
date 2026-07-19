@@ -85,8 +85,10 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
   append_ch(&c->output, '\n');
 
   for (size_t i = 0; i < cmd->iface->functions.n; i++) {
-    bstr fn = cmd->iface->functions.get[i];
-    appendf(&c->output, "#define %s %i._%s\n", fn, iface_name, fn);
+    Span fn = cmd->iface->functions.get[i];
+    fn.str[fn.len] = '\0';
+    appendf(&c->output, "#define %s %i._%s\n", fn.str, iface_name, fn.str);
+    fn.str[fn.len] = ' ';
   }
 }
 
@@ -136,11 +138,12 @@ void export(Codegen* c, ExportCmd* cmd) {
   // Includes
   HideSet hideset = {0};
   for (size_t i = 0; i < cmd->iface->impls.n; i++) {
-    bstr header = cmd->iface->impls.get[i].header;
-    if (header != NULL && !contains(hideset, header)) {
+    Span header = cmd->iface->impls.get[i].header;
+    header.str[header.len] = '\0';
+    if (header.len != 0 && !contains(hideset, header.str)) {
       appendf(&c->output, "#include %s\n", header);
     }
-    vec_push(hideset, header);
+    vec_push(hideset, header.str);
   }
   vec_destroy(hideset);
 

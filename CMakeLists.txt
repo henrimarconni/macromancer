@@ -11,6 +11,7 @@ add_executable(
   src/main.c
   src/codegen.c
   src/parser.c
+  src/span.c
   src/vmem_arena.c
   src/diagnostics.c
   src/ce_getopt.c
