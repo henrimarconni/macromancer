@@ -21,7 +21,11 @@ X(ERR_CANT_OPEN_FILE, "Cannot open file: %s")\
 X(ERR_INTERFACE_DOESNT_EXIST, "Interface %span doesn't exist")\
 X(ERR_HEADER_FILE_NOT_IN_DOUBLE_QUOTES, "Header file must be in double quotes and shouldn't have spaces: found %span")\
 X(ERR_FN_NOT_DEFINED_BUT_REFERENCED, "Function %span is not defined in interface %span but is referenced in implementation %span")\
-X(ERR_IMPL_NOT_DEFINED, "No implementation %span found for interface %span")
+X(ERR_IMPL_NOT_DEFINED, "No implementation %span found for interface %span")\
+X(ERR_IMPL_ALREADY_EXISTS, "Implementation named %span already exists in interface %span")\
+X(ERR_INTERFACE_ALREADY_EXISTS, "Interface %span already exists")\
+X(ERR_INVALID_IDENTIFIER, "Expected a identifier, found %span")\
+X(ERR_INVALID_STRING, "Expected a string, found %span")
 
 #define NOTES(X)\
 X(NOTE_OVERRIDING_EXPORT_CLI, "Overriding `export %span as %span` with `export %span as %span` from command-line argument `--export`")\
@@ -51,7 +55,7 @@ __error_type_len
 #define throw_error(p, span, type, ...)\
 do {\
   printf("In %s:%d %s():\n", __FILE__, __LINE__, __func__);\
-  _throw_error((p), (span), (type), __VA_ARGS__);\
+  _throw_error((p), (span), (type) __VA_OPT__(,) __VA_ARGS__);\
 } while (0)
 
 #define add_note(p, type, ...)\

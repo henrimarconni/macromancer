@@ -85,7 +85,7 @@ void export_dynamic_header(Codegen* c, ExportCmd* cmd) {
   appendf(&c->output, "extern struct %t %i;\n\n", iface_name, iface_name);
 
   for (size_t i = 0; i < cmd->iface->impls.n; i++) {
-    Impl* impl = &cmd->iface->impls.get[i];
+    Impl* impl = cmd->iface->impls.get[i];
     appendf(&c->output, "extern const struct %t %v;\n", iface_name, impl->name);
   }
 
@@ -110,7 +110,7 @@ void export_pair_list(Codegen* c, ExportCmd* cmd, Impl* impl) {
 
 void export_dynamic_source(Codegen* c, ExportCmd* cmd) {
   for (size_t i = 0; i < cmd->iface->impls.n; i++) {
-    Impl* impl = &cmd->iface->impls.get[i];
+    Impl* impl = cmd->iface->impls.get[i];
     appendf(&c->output, "const struct %t %v = {\n", iface_name, impl->name);
     export_pair_list(c, cmd, impl);
   }
@@ -143,7 +143,7 @@ void export(Codegen* c, ExportCmd* cmd) {
   // Includes
   HideSet hideset = {0};
   for (size_t i = 0; i < cmd->iface->impls.n; i++) {
-    Span header = cmd->iface->impls.get[i].header;
+    Span header = cmd->iface->impls.get[i]->header;
     if (header.len != 0 && !contains(hideset, header)) {
       appendf(&c->output, "#include %s\n", header);
     }

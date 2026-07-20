@@ -29,7 +29,7 @@ typedef struct {
 typedef struct {
   Span name;
   vec(Span) functions;
-  vec(Impl) impls;
+  vec(Impl*) impls;
   bool is_dynamic;
 } Interface;
 
@@ -48,7 +48,7 @@ typedef struct {
 } Position;
 
 typedef struct {
-  vec(Interface) interfaces;
+  vec(Interface*) interfaces;
   vec(ExportCmd) exports;
   ostr source;
   Position pos;

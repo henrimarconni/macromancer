@@ -98,6 +98,16 @@ void expect(Parser* p, bstr str) {
     throw_error(p, span, ERR_UNEXPECTED_TOK, str, span);
 }
 
+void add_interface(Parser* p, Interface interface) {
+  for (size_t i = 0; i < p->interfaces.n; i++) {
+    if (span_cmp(interface.name, p->interfaces.get[i]->name))
+      throw_error(p, interface.name, ERR_INTERFACE_ALREADY_EXISTS, interface.name);
+  }
+  Interface* mem = vmarena_alloc(p->arena, sizeof(Interface));
+  *mem = interface;
+  vec_push(p->interfaces, mem);
+}
+
 void parse_interface(Parser* p) {
   Span name = get_tok(p);
   expect(p, "as");
@@ -124,7 +134,26 @@ void parse_interface(Parser* p) {
     vec_push(iface.functions, tok);
   }
 
-  vec_push(p->interfaces, iface);
+  add_interface(p, iface);
+}
+
+#define is_valid_id_char(ch)                                                                       \
+  (isalnum((unsigned char)(ch)) || (ch) == '=' || (ch) == '"' || (ch) == '$' || (ch) == '.' ||     \
+   (ch) == '_')
+
+Span expect_str(Parser* p) {
+  skip_unwanted(p);
+  Span span = {p->pos.row, p->pos.col, 1, &p->source[p->pos.id]};
+  char ch = nextch(p);
+  if (ch != '"')
+    throw_error(p, span, ERR_INVALID_STRING, span);
+  while (ch != '"' && ch != EOF) {
+    ch = nextch(p);
+    span.len++;
+  }
+  if (ch != '"')
+    throw_error(p, span, ERR_INVALID_STRING, span);
+  return span;
 }
 
 void parse_pair(Parser* p, ImplKVPair* pair) {
@@ -135,7 +164,7 @@ void parse_pair(Parser* p, ImplKVPair* pair) {
 
 Impl* find_impl(Parser* p, Interface* iface, Span name) {
   for (size_t i = 0; i < iface->impls.n; i++) {
-    Impl* impl = &iface->impls.get[i];
+    Impl* impl = iface->impls.get[i];
     if (span_cmp(impl->name, name))
       return impl;
   }
@@ -144,7 +173,7 @@ Impl* find_impl(Parser* p, Interface* iface, Span name) {
 
 ssize_t find_iface_idx(Parser* p, Span name) {
   for (size_t i = 0; i < p->interfaces.n; i++) {
-    if (span_cmp(p->interfaces.get[i].name, name))
+    if (span_cmp(p->interfaces.get[i]->name, name))
       return (ssize_t)i;
   }
   return -1;
@@ -152,7 +181,7 @@ ssize_t find_iface_idx(Parser* p, Span name) {
 
 Interface* find_iface(Parser* p, Span name) {
   ssize_t idx = find_iface_idx(p, name);
-  return (idx >= 0) ? &p->interfaces.get[idx] : NULL;
+  return (idx >= 0) ? p->interfaces.get[idx] : NULL;
 }
 
 int find_fn_id(Parser* p, Interface* iface, Span name) {
@@ -161,6 +190,17 @@ int find_fn_id(Parser* p, Interface* iface, Span name) {
       return i;
   }
   return -1;
+}
+
+void add_impl(Parser* p, Impl impl, size_t iface_idx) {
+  Interface* iface = p->interfaces.get[iface_idx];
+  for (size_t i = 0; i < iface->impls.n; i++) {
+    if (span_cmp(impl.name, iface->impls.get[i]->name))
+      throw_error(p, iface->name, ERR_IMPL_ALREADY_EXISTS, impl.name, iface->name);
+  }
+  Impl* mem = vmarena_alloc(p->arena, sizeof(Impl));
+  *mem = impl;
+  vec_push(p->interfaces.get[iface_idx]->impls, mem);
 }
 
 void parse_impl(Parser* p) {
@@ -191,7 +231,7 @@ void parse_impl(Parser* p) {
   impl.header = header_pair.val;
   impl.name = name;
 
-  Interface* iface = &p->interfaces.get[iface_idx];
+  Interface* iface = p->interfaces.get[iface_idx];
   vec_resize(impl.pairs, iface->functions.n);
   memset(impl.pairs.get, 0, sizeof(ImplKVPair) * iface->functions.n);
 
@@ -204,7 +244,7 @@ void parse_impl(Parser* p) {
     ImplKVPair pair;
     parse_pair(p, &pair);
 
-    iface = &p->interfaces.get[iface_idx];
+    iface = p->interfaces.get[iface_idx];
     int id = find_fn_id(p, iface, pair.key);
     if (id < 0)
       throw_error(p, pair.key, ERR_FN_NOT_DEFINED_BUT_REFERENCED, pair.key, iface->name, impl.name);
@@ -213,7 +253,7 @@ void parse_impl(Parser* p) {
     impl.pairs.n++;
   }
 
-  vec_push(p->interfaces.get[iface_idx].impls, impl);
+  add_impl(p, impl, iface_idx);
 }
 
 void add_export_cli(Parser* p, bstr iface_name, bstr impl_name) {
@@ -335,10 +375,10 @@ void read_conf(Parser* p, bstr confpath, ExportOverrideVec* export_override, VME
 void parser_destroy(Parser* p) {
   vec_destroy(p->exports);
   for (size_t i = 0; i < p->interfaces.n; i++) {
-    Interface* iface = &p->interfaces.get[i];
+    Interface* iface = p->interfaces.get[i];
     vec_destroy(iface->functions);
     for (size_t j = 0; j < iface->impls.n; j++) {
-      vec_destroy(iface->impls.get[j].pairs);
+      vec_destroy(iface->impls.get[j]->pairs);
     }
     vec_destroy(iface->impls);
   }
